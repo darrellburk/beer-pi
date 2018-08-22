@@ -13,9 +13,9 @@
  * 
  * Our only load (other than the freezer interior itself) will be the carboy of fermenting beer, the wort. 
  * During fermentation, the wort generates heat. When no fermentation is happening, the wort doesn't generate
- * any heat. The wort also has thermal mass (which is to say, a certain amount of energy is required
+ * any heat. The wort also has thermal mass, which is to say, a certain amount of energy is required
  * to heat (by adding energy) or cool (by removing energy) the wort by 1 degree F. The thermal mass is that
- * ratio between enerty addition/removal, and the resulting temperature increase/decrease. The thermal mass
+ * ratio between energy addition/removal, and the resulting temperature change. The thermal mass
  * is proportional to the number of gallons and is probably nearly identical to the thermal mass of water.
  * 
  * The wort also has a heat transfer cooeficient. This is the ratio that specifies the relationship between
@@ -23,15 +23,15 @@
  * it. The heat transfer coefficient depends on things like the surface area of the container that holds
  * the wort, whether the wort is circulating, what kind of material the container is made of, how thick it
  * is, etc. For example, if the fermentation vessel is well insulated, then the heat transfer coefficient is
- * low, and if the wort temperature is 75F and the air surrounding it is -10F, the wort wil be cooled at
- * a certain rate; if the fermentation vessel is not insulated and all other conditions are the same, then the
- * wort will be cooled at a higher rate. 
+ * low, and heat will be transferred at a certain rage between the carboy and the air surrounding it; if the 
+ * fermentation vessel is not insulated and all other conditions are the same, then heat will be transferred
+ * at a higher rate. 
  * 
  * The temperature controller is intended to estimate the thermal mass of the wort and the freezer by monitoring
- * the ambient temperature and wort temperature over time, and calculating how rapidly heat is transferred.
- * And then, using these values, it is also intended to calculate the heat output of the fermenting wort, and to
- * use that value to determine whether the wort is in primary/active fermentation, secondary fermentation, or
- * fermentation not happening (i.e. fermentation not started, or fermentation complete).
+ * the freezer internal ambient temperature and wort temperature over time, and calculating how rapidly heat 
+ * is transferred. And then, using these values, it is also intended to calculate the heat output of the 
+ * fermenting wort, and to use that value to determine whether the wort is in primary/active fermentation, 
+ * secondary fermentation, or fermentation not happening (i.e. fermentation not started, or fermentation complete).
  * 
  * 
  * This module contains both the code and configuration for the simulator.
