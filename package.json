@@ -1,0 +1,11 @@
+{
+    "name": "beer-pi",
+    "version": "0.1.0",
+    "description": "use a Raspberry Pi 3 with one or two DS18B20 temperature probes and a relay to turn a chest freezer into a kegerator or temperature-controlled fermentation chamber",
+    "dependencies": {
+        "onoff": ">=3.2.1",
+        "ds18b20-raspi": ">=0.2.5",
+        "sd-notify": "^2.3.0"
+
+    }
+}
