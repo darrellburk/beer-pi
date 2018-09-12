@@ -18,11 +18,88 @@ process.on("SIGINT", function() {
   process.exit();
 });
 
+var state = {
+  lastTs: -1, // timestamp for previous controlTemperature() pass
+  power: 0,
+  stayOffUntilTs: -1,
+  stayOnUntilTs: -1,
+  loggingFlags: {
+    unknownProbes: false
+  }
+};
 
 var probes = discoverTemperatureProbes();
 
+// TODO delete this test
 // call the callback with an error hopefully 
 sensor.readF("bogus probe ID", 4, readProbeCallback);
+
+/**
+ * Intended to be called at regular intervals (every 30 seconds probably), this function
+ * uses the most recently read temperatures from the probes and then decides whether to 
+ * turn the power to the freezer on or off.
+ * 
+ */
+function controlTemperature() {
+  var now = new Date().valueOf();
+
+  // make sure we let the compressor rest after controller restart
+  if (state.lastTs == -1) {
+    // the controller just started, so we don't know how long the compressor has been off
+    state.stayOffUntilTs = now + (config.compressorRestSeconds * 1000);
+  }
+
+  // protect the compressor from coming on too soon after going off
+  if (now < state.stayOffUntilTs) {
+    turnPowerOff();
+    return;
+  }
+
+  // enforce minimum on-time
+  if (state.power != 0 && state.stayOnUntilTs > now) {
+    turnPowerOn();
+    return;
+  }
+
+  // currently just supporting one control mode: manage enclosure temperature
+
+  // manage enclosure temperature
+  if (true) {
+    if (probeDefinedFor("enclosure")) {
+      var temp = 
+
+    } else if (!state.loggingFlags.unknownProbes) {
+      console.log("Temperature probe ID for freezer enclosure is incorrect or not specfied. Temperature control is not possible.");
+      state.loggingFlags.unknownProbes = true;
+    }
+
+  }
+
+
+}
+
+function turnPowerOff() {
+  if (state.power != 0) {
+    state.power = 0;
+    power.writeSync(state.power);
+  }
+}
+
+function turnPowerOn() {
+  if (state.power == 0) {
+    state.power = 1;
+    power.writeSync(state.power);
+  }
+}
+
+/**
+ * TODO implement
+ * 
+ * This function is intended to be called periodically
+ */
+function readTemperatureProbes(successCallback) {
+
+}
 
 setInterval(function() {
   value = (value == 0) ? 1 : 0;
