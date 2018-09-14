@@ -9,6 +9,7 @@ Restart=always
 RestartSec=1
 User=pi
 ExecStart=/usr/bin/nodejs /home/pi/src/beer-pi/beer-controller.js
+WorkingDirectory=/home/pi/src/beer-pi
 
 [Install]
 WantedBy=multi-user.target
