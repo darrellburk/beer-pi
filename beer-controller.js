@@ -1,18 +1,18 @@
 "use strict;";
 const Gpio = require('onoff').Gpio;
-var power = new Gpio(17, 'out');
+var powerSwitch = new Gpio(17, 'out');
 const sensor = require('ds18b20-raspi');
 const config = require("./config.js");
+const config = require("./physical-interface.js");
 
 // some symbolic constants for safety
 const ENCLOSURE = "enclosure";
 const FERMENTATION = "fermentation";
 
-// TODO delete this temp thing...
-var value = 0;
-
 /*
 Call onExit when the app is terminating because process.exit() is called or there is no more work to do.
+
+TODO systemctl restart does not trigger our exit handling, fix that
 */
 process.on("exit", onExit);
 process.on("SIGINT", function() {
@@ -33,8 +33,9 @@ var state = {
 };
 
 
+powerSwitch.writeSync(0);
 validateConfig(config);
-
+startPhysicalInterface(controlTemperature, protectFreezerAndContents);
 
 
 /**
@@ -44,96 +45,65 @@ validateConfig(config);
  * 
  */
 function controlTemperature() {
-  var now = new Date().valueOf();
-
-  // make sure we let the compressor rest after controller restart
-  if (state.lastTs == -1) {
-    // the controller just started, so we don't know how long the compressor has been off
-    state.stayOffUntilTs = now + (config.compressorRestSeconds * 1000);
-  }
-
-  // protect the compressor from coming on too soon after going off
-  if (now < state.stayOffUntilTs) {
-    turnPowerOff(now);
-    return;
-  }
-
-  // enforce minimum on-time
-  if (state.power != 0 && state.stayOnUntilTs > now) {
-    turnPowerOn(now);
-    return;
-  }
-
+  var power = state.power;
   // currently just supporting one control mode: manage enclosure temperature
 
   if (config.mode == ENCLOSURE) {
     // control enclosure temperature
-    if (probeDefinedFor("enclosure")) {
-      var temp = getTempFor("enclosure");
-      if (temp > config.targetEnclosureTemp + 1) {
-        turnPowerOn(now);
-      } else if (temp < config.targetEnclosureTemp - 1) {
-        turnPowerOff(now);
-      }
-    } else if (!state.loggingFlags.unknownProbes) {
-      console.log("Temperature probe ID for freezer enclosure is incorrect or not specfied. Temperature control is not possible. Turning power off.");
-      state.loggingFlags.unknownProbes = true;
-      turnPowerOff(now);
+    var temp = state.enclosureTemp;
+    if (state.enclosureTemp > config.targetEnclosureTemp + 1) {
+      power = 1;
+    } else if (temp < config.targetEnclosureTemp - 1) {
+      power = 0;
     }
-
-    state.lastTs = now;
   } else if (config.mode == FERMENTATION) {
     // TODO log not implemented
   }
 
-
+  return power;
 }
-
-function turnPowerOff(now) {
-  if (state.power != 0) {
-    state.power = 0;
-    power.writeSync(state.power);
-    state.stayOffUntilTs = now + (config.compressorRestSeconds * 1000);
-  }
-}
-
-function turnPowerOn(now) {
-  if (state.power == 0) {
-    state.power = 1;
-    power.writeSync(state.power);
-    state.stayOnUntilTs = now + (config.minCompressorRunSeconds * 1000);
-  }
-}
-
 
 /**
- * TODO implement
+ * Protects the freezer equipment and contents by
+ * + preventing rapid cycling of the compressor
+ * + verifying that the enclosure probe is in the enclosure
+ * + verifying that the freezer does remove heat when it's powered on
+ * + maybe other things as well
  * 
- * This function is intended to be called periodically
+ * Returns an object that indicates whether power should be forced off or forced on, along with a loggable
+ * description of why.
  */
-function readTemperatureProbes(successCallback) {
-  var temp = sensor.readF(state.enclosureProbeId, 4, readProbeCallback);
-  console.log("Enclosure probe: %f", temp);
-  if (state.fermenterProbeId!=null) {
-    temp = sensor.readF(state.fermenterProbeId, 4, readProbeCallback);
-    console.log("Fermentation probe: %f", temp);
+function protectFreezerAndContents() {
+  var result = {
+    forcePowerOff: false,
+    forcePowerOn: false,
+    reason: ""
   }
+
+  // make sure compressor doesn't cycle too frequently
+  if (state.lastTs == -1) {
+    state.stayOffUntilTs = now + (config.compressorRestSeconds * 1000);
+    result.forcePowerOff = true;
+    result.reason = "Startup delay to prevent premature start after power failure";
+  } else if (now < state.stayOffUntilTs) {
+    result.forcePowerOff = true;
+    result.reason = "Ensure minimum compressor off time between run cycles";
+  } else if (state.power != 0 && state.stayOnUntilTs > now) {
+    result.forcePowerOn = true;
+    result.reason = "Ensure minimum compressor run time";
+  }
+  
+  /**
+   * TODO add tests for assessing whether freezer is actually running and removing heat,
+   * and whether the enclosure probe is sensing temperature changes inside the freezer.
+   */
+  
+
+  return result;
 }
 
-setInterval(function() {
-  value = (value == 0) ? 1 : 0;
-  power.writeSync(value);
-
-  // TODO have this call back to controlTemperature()
-  readTemperatureProbes();
-  console.log("finished toggling LED");
-}, 1000);
 
 
-
-function readProbeCallback(error, readings) {
-  console.log("readProbeCallback: readings="+readings+", error="+error);
-}
 
 /**
  * Handler that is intended to be called upon receipt of any external signal that requests the
@@ -151,9 +121,9 @@ function exitRequested() {
  */
 function onExit(code) {
   // turn off the power and then unexport that GPIO pin
-  power.writeSync(0);
-  power.unexport();
-  power = null;
+  powerSwitch.writeSync(0);
+  powerSwitch.unexport();
+  powerSwitch = null;
 
   console.log("beer-controller is exiting with code "+code);
 }
