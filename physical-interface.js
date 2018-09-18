@@ -17,7 +17,7 @@
 
 /**
  * The function of the physical interface is to periodically read the temperature probes and then call
- * controlCallback to allow it to decide about turning on/off the power to the freezer.
+ * the control and protection callbacks
  * 
  * @param function controlFunction function that implements the control algorithm
  * @param function protectionFunction implements the beer/wort/freezer protection logic
@@ -25,6 +25,7 @@
 function startPhysicalInterface(controlFunction, protectionFunction) {
     setInterval(function(){
         controlFreezerPower(controlFunction, protectionFunction);
+        logToFile();
     }, 30000);
 }
 
@@ -40,11 +41,25 @@ function controlFreezerPower(controlFunction, protectionFunction) {
     var power = controlFunction();
     var protection = protectionFunction();
 
+    logData.reason = "control";
+
     if (protection.forcePowerOff) {
         power = 0;
+        logData.reason = "protection";
+        logData.note = protection.reason;
     } else if (protection.forcePowerOn) {
         power = 1;
+        logData.reason = "protection";
+        logData.note = protection.reason;
     }
+
+    if (logData.reason == logData.previousReason && logData.note==logData.previousNote) {
+        logData.note == "";
+    } else {
+        logData.previousReason = logData.reason;
+        logData.previousNote = logData.note;
+    }
+    
     setPower(power, now);
 }
 
@@ -54,6 +69,8 @@ function setPower(power, now) {
         state.power = power;
         powerSwitch.writeSync(state.power);
 
+        // TODO in future this should be handled by controller side, as stayOffUntilTs and stayOnUntilTs more
+        // properly belong to its state
         if (!power) {
             state.stayOffUntilTs = now + (config.compressorRestSeconds * 1000);
         } else {

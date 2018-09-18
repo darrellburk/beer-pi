@@ -32,6 +32,18 @@ var state = {
   fermenterProbeId: null
 };
 
+var logData = {
+  ts: 0,
+  mode: "",
+  enclosureTemp: -1,
+  fermentationTemp: -1,
+  power: -1,
+  reason: "",
+  note: "",
+  previousReason: "",
+  previousNote: ""
+};
+
 
 powerSwitch.writeSync(0);
 validateConfig(config);
@@ -43,6 +55,7 @@ startPhysicalInterface(controlTemperature, protectFreezerAndContents);
  * uses the most recently read temperatures from the probes and then decides whether to 
  * turn the power to the freezer on or off.
  * 
+ * @returns a request to leave the power as-is, turn it on, or turn it off
  */
 function controlTemperature() {
   var power = state.power;
@@ -92,6 +105,13 @@ function protectFreezerAndContents() {
     result.forcePowerOn = true;
     result.reason = "Ensure minimum compressor run time";
   }
+
+  // TODO make this minimum temperature configurable
+  if (state.enclosureTemp < 32) {
+    result.forcePowerOff = true;
+    result.forcePowerOn = false;
+    result.reason = "Prevent freezing kegs/wort"
+  }
   
   /**
    * TODO add tests for assessing whether freezer is actually running and removing heat,
@@ -101,6 +121,8 @@ function protectFreezerAndContents() {
 
   return result;
 }
+
+function logToFile()
 
 
 
