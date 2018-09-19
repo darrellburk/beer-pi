@@ -2,7 +2,8 @@ module.exports = {
     compressorRestSeconds: 300,
     minCompressorRunSeconds: 120,
     targetEnclosureTemp: 60,
-    enclosureProbeId: "28-041652951fff"
+    enclosureProbeId: "28-041652951fff",
+    controlIntervalSeconds: 30 
 }
 
 /*

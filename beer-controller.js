@@ -1,7 +1,4 @@
 "use strict;";
-const Gpio = require('onoff').Gpio;
-var powerSwitch = new Gpio(17, 'out');
-const sensor = require('ds18b20-raspi');
 const config = require("./config.js");
 const physicalInterface = require("./physical-interface.js");
 
@@ -15,7 +12,7 @@ Call onExit when the app is terminating because process.exit() is called or ther
 TODO systemctl restart does not trigger our exit handling, fix that
 */
 process.on("exit", onExit);
-process.on("SIGINT", function() {
+process.on("SIGINT", function () {
   console.log("Received SIGINT");
   process.exit();
 });
@@ -45,9 +42,8 @@ var logData = {
 };
 
 
-powerSwitch.writeSync(0);
 validateConfig(config);
-physicalInterface.configure(config, state, logData, controlTemperature, protectFreezerAndContents);
+physicalInterface.configure(config, state, controlTemperature, protectFreezerAndContents, logToFile);
 physicalInterface.start();
 
 
@@ -87,7 +83,7 @@ function controlTemperature() {
  * Returns an object that indicates whether power should be forced off or forced on, along with a loggable
  * description of why.
  */
-function protectFreezerAndContents() {
+function protectFreezerAndContents(now) {
   var result = {
     forcePowerOff: false,
     forcePowerOn: false,
@@ -113,19 +109,19 @@ function protectFreezerAndContents() {
     result.forcePowerOn = false;
     result.reason = "Prevent freezing kegs/wort"
   }
-  
+
   /**
    * TODO add tests for assessing whether freezer is actually running and removing heat,
    * and whether the enclosure probe is sensing temperature changes inside the freezer.
    */
-  
+
 
   return result;
 }
 
 // TODO implement data logging to local file (local and web servable from node.js perspective)
-function logToFile() {
-
+function logToFile(logData) {
+  console.log({state: state, details: logData});
 }
 
 
@@ -152,7 +148,7 @@ function onExit(code) {
   powerSwitch.unexport();
   powerSwitch = null;
 
-  console.log("beer-controller is exiting with code "+code);
+  console.log("beer-controller is exiting with code " + code);
 }
 
 /**
@@ -200,17 +196,18 @@ function validateConfig(config) {
     console.log("NOTICE: targetEnclosureTemp > 72. It is likely that freezer will never be powered and no cooling will occur.");
   } else if (config.targetEnclosureTemp < 0) {
     console.log("WARNING: targetEnclosureTemp < 0. Freezer will likely remain powered continuously and will operate as "
-               +"a freezer. Beer/wort will freeze. Kegs and fermenters and bottles may burst!");
+      + "a freezer. Beer/wort will freeze. Kegs and fermenters and bottles may burst!");
   }
-  
+
   /**
    * temperature probes
    * readAllF() returns something like this:
    * [ { id: '28-031647c7f3ff', t: 72.162 },
    * { id: '28-041652951fff', t: 73.625 } ]
    */
-  console.log({"discovered probes":sensor.readAllF()});
-  if (typeof config.enclosureProbeId != "string" ) {
+  probes = physicalInterface.discoverProbes();
+  console.log({ "discovered probes": probes });
+  if (typeof config.enclosureProbeId != "string") {
     console.log("Fatal: enclosureProbeId is missing or malformed. Please set it to one of the probe IDs reported just below. To help distinguish probes, expose them to different temperatures.");
     process.exit();
   }
@@ -218,7 +215,6 @@ function validateConfig(config) {
     console.log("fermenterProbeId is missing or malformed. Fermentation control is not available. Setting mode=enclosure.");
     config.mode = ENCLOSURE;
   }
-  probes = sensor.readAllF();
   state.enclosureProbeId = null;
   state.fermenterProbeId = null;
   // match up probe IDs from config to attached probes
@@ -235,11 +231,11 @@ function validateConfig(config) {
       console.log("Warning: probe %s is not used by enclosureProbeId or fermenterProbeId. Is this intentional?", probes[i].id);
     }
   }
-  if (state.enclosureProbeId==null) {
+  if (state.enclosureProbeId == null) {
     console.log("Fatal: enclosureProbeId is set to %s but no such probe is connected. Terminating.", config.enclosureProbeId);
     process.exit();
   }
-  if (state.fermenterProbeId==null && config.fermenterProbeId!=null) {
+  if (state.fermenterProbeId == null && config.fermenterProbeId != null) {
     console.log("Warning: fermenterProbeId is set to %s but no such probe is connected. Fermentation control is not available. Setting mode=enclosure.", config.fermenterProbeId);
     config.mode = ENCLOSURE;
   }
@@ -248,13 +244,14 @@ function validateConfig(config) {
     console.log("mode must be set to either '%s' or '%s'. Defaulting to %s.", ENCLOSURE, FERMENTATION, ENCLOSURE);
   }
 
-  if (typeof config.controlIntervalSeconds != "number" || (controlIntervalSeconds<1 || controlIntervalSeconds>60)) {
+  if (typeof config.controlIntervalSeconds != "number"
+    || (config.controlIntervalSeconds < 1 || config.controlIntervalSeconds > 60)) {
     console.log("controlIntervalSeconds must be >=1 and <=60. Defaulting to 30.");
     config.controlIntervalSeconds = 30;
   }
 
   console.log({
-    message:"Finished validating config",
+    message: "Finished validating config",
     config: config,
     state: state
   });

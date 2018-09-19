@@ -1,3 +1,4 @@
+"use strict;";
 /**
  * Encapsulates the physical interface to the freezer (reading the temperature probes and turning freezer power on and off).
  * 
@@ -20,17 +21,26 @@
  *   power to the freezer based on their outputs. Then records what was done and why.
 */
 
+const Gpio = require('onoff').Gpio;
+var powerSwitch = new Gpio(17, 'out');
+const sensor = require('ds18b20-raspi');
+
 var config = null;
-var logData = null;
+var logData = {};
 var state = null;
 var controlFunction = null;
 var protectionFunction = null;
+var logFunction = null;
 var controlInterval = null;
 /**
  * we keep our own private copy of the current freezer power here; relying on the one in state (which can be corrupted
  * elsewhere) could cause catastrophic failure. Starts at -1 to ensure desired power of 0 or 1 are both seen as a change.
  */
 var power = -1;
+
+// very first thing, turn the power off, just to be sure
+powerSwitch.writeSync(0);
+
 
 /**
  * 
@@ -41,13 +51,14 @@ var power = -1;
  * @param function pprotectionFunction 
  * function that returns {forcePowerOff: boolean, forcePowerOn: boolean, reason: string} indicating whether power must 
  * be forced on or off, and if so, why. Overrides the output of controFunction
+ * @param function fLogToFile callback to log current state to the control history file
  */
-function configure(pconfig, pstate, plogData, pcontrolFunction, pprotectionFunction) {
+function configure(pconfig, pstate, fControl, fProtection, fLogToFile) {
   config = pconfig;
   state = pstate;
-  logData = plogData;
-  controlFunction = pcontrolFunction;
-  protectionFunction = pprotectionFunction;
+  controlFunction = fControl;
+  protectionFunction = fProtection;
+  logFunction = fLogToFile;
 }
 
 /**
@@ -55,10 +66,12 @@ function configure(pconfig, pstate, plogData, pcontrolFunction, pprotectionFunct
  * and protection functions, and control freezer power based on their outputs.
  */
 function start() {
+  controlFreezerPower(controlFunction, protectionFunction);
+  logFunction(logData);
   controlInterval = setInterval(function () {
     controlFreezerPower(controlFunction, protectionFunction);
-    logToFile();
-  }, config.controlIntervalSeconds);
+    logFunction(logData);
+  }, config.controlIntervalSeconds * 1000);
 }
 
 /**
@@ -79,8 +92,8 @@ function controlFreezerPower() {
   var now = new Date().valueOf();
   state.lastTs = now;
   readTemperature();
-  var newPower = controlFunction();
-  var protection = protectionFunction();
+  var newPower = controlFunction(now);
+  var protection = protectionFunction(now);
 
   logData.reason = "control";
 
@@ -128,10 +141,10 @@ function setPower(newPower, now) {
  * Reads the temperature probes and stores them in the state object
  */
 function readTemperature() {
-  state.enclosureTemp = sensor.readF(state.enclosureProbeId, 4, readProbeCallback);
+  var temp = state.enclosureTemp = sensor.readF(state.enclosureProbeId, 4, readProbeCallback);
   console.log("Enclosure probe: %f", temp);
   if (state.fermenterProbeId != null) {
-    state.fermentationTemp = sensor.readF(state.fermenterProbeId, 4, readProbeCallback);
+    temp = state.fermentationTemp = sensor.readF(state.fermenterProbeId, 4, readProbeCallback);
     console.log("Fermentation probe: %f", temp);
   }
 }
@@ -140,9 +153,14 @@ function readProbeCallback(error, readings) {
   console.log("readProbeCallback: readings=" + readings + ", error=" + error);
 }
 
+function discoverProbes() {
+  return sensor.readAllF();
+}
+
 
 module.exports = {
   configure: configure,
+  discoverProbes: discoverProbes,
   start: start,
   stop: stop
 }
