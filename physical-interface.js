@@ -6,37 +6,26 @@
  * test those algorithms via a mocked physical interface.
  * 
  * Division of responsibilities:
- * + Control algorithm: uses data from the temperature probes to decide whether to enable/disable power to the freezer
- *   in order to manage the temperature. This algorithm is only concerned with managing the temperature, and it trusts the
- *   probes. 
- * + protection algorithm: uses current and historical data from the temperature probes and power setting to determine 
- *   whether the system is operating correctly. Checks for things like:
- *   + heat decreases more while freezer is powered than when it is not (detects but doesn't necessarily distinguish between
- *     failures like freezer not working, freezer is actually a warmer, probes are not in the enclosure, etc.)
- *   + control algorithm is causing enclosure temperature to be dangerously low (example: suppose boiling wort is placed in
- *     the freezer for cooling, and there are also bottles of beer in the freezer; if the control algorithm cools the wort
- *     as fast as possible by running the freezer continuously, this could simultaneously freeze the bottled beer and break
- *     the bottles)
- * + physical interface: reads the temperature probes, then consults with the control and protection algorithms and sets
- *   power to the freezer based on their outputs. Then records what was done and why.
-*/
+ * + Physical interface is in charge of the control interval (so that a simulated physical interface can accellerate time
+ *   so that, for example, 7-day test scenarios don't take seven days to run)
+ * + It periodically reads the probes, stores the value and the current power setting in the state objhect,  and calls 
+ *   the control function. It also exports the setPower() function, and the control function is expected to call this
+ *   when needed to turn the power on or off.
+ * + All the other important operations are outside the physical interface's responsibility: temperature control algorithm,
+ *   freezer and contents protection algorithm, logging, etc.
+ * 
+ * NOTE that this module does not have any protection mechanisms. It will turn the freezer power on and off on command,
+ * without attempting to prevent the destruction that would result from rapid cycling or worse.
+ */
 
 const Gpio = require('onoff').Gpio;
 var powerSwitch = new Gpio(17, 'out');
 const sensor = require('ds18b20-raspi');
 
 var config = null;
-var logData = {};
 var state = null;
 var controlFunction = null;
-var protectionFunction = null;
-var logFunction = null;
 var controlInterval = null;
-/**
- * we keep our own private copy of the current freezer power here; relying on the one in state (which can be corrupted
- * elsewhere) could cause catastrophic failure. Starts at -1 to ensure desired power of 0 or 1 are both seen as a change.
- */
-var power = -1;
 
 // very first thing, turn the power off, just to be sure
 powerSwitch.writeSync(0);
@@ -45,20 +34,14 @@ powerSwitch.writeSync(0);
 /**
  * 
  * @param {*} pconfig configuration object from config.js
- * @param {*} plogData logData object from beer-controller.js
- * @param function pcontrolFunction function that returns 1 (power on) or 0 (power off) to indicate freezer power needed to 
- * control temperature 
- * @param function pprotectionFunction 
- * function that returns {forcePowerOff: boolean, forcePowerOn: boolean, reason: string} indicating whether power must 
- * be forced on or off, and if so, why. Overrides the output of controFunction
+ * @param function fControl function that controls the freezer power (by calling setPower()). This module will call
+ * the control function periodically after reading the temperature probes
  * @param function fLogToFile callback to log current state to the control history file
  */
-function configure(pconfig, pstate, fControl, fProtection, fLogToFile) {
+function configure(pconfig, pstate, fControl) {
   config = pconfig;
   state = pstate;
   controlFunction = fControl;
-  protectionFunction = fProtection;
-  logFunction = fLogToFile;
 }
 
 /**
@@ -66,12 +49,20 @@ function configure(pconfig, pstate, fControl, fProtection, fLogToFile) {
  * and protection functions, and control freezer power based on their outputs.
  */
 function start() {
-  controlFreezerPower(controlFunction, protectionFunction);
-  logFunction(logData);
-  controlInterval = setInterval(function () {
-    controlFreezerPower(controlFunction, protectionFunction);
-    logFunction(logData);
-  }, config.controlIntervalSeconds * 1000);
+  if (controlInterval == null) {
+    var now = new Date().valueOf();
+    readTemperature();
+    controlFunction(now);
+    controlInterval = setInterval(function () {
+      var now = new Date().valueOf();
+      readTemperature();
+      controlFunction(now);
+    }, config.controlIntervalSeconds * 1000);
+  }
+}
+
+function setPower(power) {
+  powerSwitch.writeSync(power ? 1 : 0);
 }
 
 /**
@@ -79,78 +70,28 @@ function start() {
  */
 function stop() {
   setPower(0);
+  powerSwitch.writeSync(0);
+  powerSwitch.unexport();
+  powerSwitch = null;
   if (controlInterval) {
     clearInterval(controlInterval);
     controlInterval = null;
   }
 }
 
-/**
- * Implements the periodic control behavior of the physical interface.
- */
-function controlFreezerPower() {
-  var now = new Date().valueOf();
-  state.lastTs = now;
-  readTemperature();
-  var newPower = controlFunction(now);
-  var protection = protectionFunction(now);
-
-  logData.reason = "control";
-
-  if (protection.forcePowerOff) {
-    newPower = 0;
-    logData.reason = "protection";
-    logData.note = protection.reason;
-  } else if (protection.forcePowerOn) {
-    newPower = 1;
-    logData.reason = "protection";
-    logData.note = protection.reason;
-  }
-
-  if (logData.reason == logData.previousReason && logData.note == logData.previousNote) {
-    logData.note == "";
-  } else {
-    logData.previousReason = logData.reason;
-    logData.previousNote = logData.note;
-  }
-
-  setPower(newPower, now);
-}
-
-// TODO need to move the node modules for temp probes and power switch into here
-function setPower(newPower, now) {
-  now = now || new Date().valueOf();
-
-  newPower = newPower ? 1 : 0;
-  if (power != newPower) {
-    power = newPower;
-    state.power = newPower;
-    powerSwitch.writeSync(newPower);
-
-    // TODO in future this should be handled by controller side, as stayOffUntilTs and stayOnUntilTs more
-    // properly belong to its state
-    if (!newPower) {
-      state.stayOffUntilTs = now + (config.compressorRestSeconds * 1000);
-    } else {
-      state.stayOnUntilTs = now + (config.minCompressorRunSeconds * 1000);
-    }
-  }
-}
 
 /**
  * Reads the temperature probes and stores them in the state object
  */
 function readTemperature() {
   var temp = state.enclosureTemp = sensor.readF(state.enclosureProbeId, 4, readProbeCallback);
-  console.log("Enclosure probe: %f", temp);
   if (state.fermenterProbeId != null) {
     temp = state.fermentationTemp = sensor.readF(state.fermenterProbeId, 4, readProbeCallback);
-    console.log("Fermentation probe: %f", temp);
   }
 }
 
 function readProbeCallback(error, readings) {
-  console.log("readProbeCallback: readings=" + readings + ", error=" + error);
+  //console.log("readProbeCallback: readings=" + readings + ", error=" + error);
 }
 
 function discoverProbes() {
@@ -162,5 +103,6 @@ module.exports = {
   configure: configure,
   discoverProbes: discoverProbes,
   start: start,
+  setPower: setPower,
   stop: stop
 }

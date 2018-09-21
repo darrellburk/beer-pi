@@ -1,6 +1,7 @@
 "use strict;";
 const config = require("./config.js");
 const physicalInterface = require("./physical-interface.js");
+const fs = require('fs');
 
 // some symbolic constants for safety
 const ENCLOSURE = "enclosure";
@@ -19,7 +20,7 @@ process.on("SIGINT", function () {
 
 var state = {
   lastTs: -1, // timestamp for previous controlTemperature() pass
-  power: 0,
+  power: -1,
   stayOffUntilTs: -1,
   stayOnUntilTs: -1,
   loggingFlags: {
@@ -40,37 +41,74 @@ var logData = {
   previousReason: "",
   previousNote: ""
 };
+var logFileFd = null;
 
+fs.open("./keezer.log", "a", function (err, fd) {
+  if (err) throw err;
+  logFileFd = fd;
+  fs.write(fd, "Freezer controller started", callback)
+});
 
 validateConfig(config);
-physicalInterface.configure(config, state, controlTemperature, protectFreezerAndContents, logToFile);
+physicalInterface.configure(config, state, controlFreezerPower);
 physicalInterface.start();
 
 
 /**
- * Intended to be called at regular intervals (every 30 seconds probably), this function
- * uses the most recently read temperatures from the probes and then decides whether to 
+ * Intended to be called at regular intervals (every 30 seconds probably) by the physical interface after it has read the
+ * temperature probes, this function uses the most recently read temperatures from the probes and then decides whether to 
  * turn the power to the freezer on or off.
+ */
+function controlFreezerPower(now) {
+  var newPower = controlTemperature(now);
+  var protection = protectFreezerAndContents(now);
+
+  // this must come AFTER calling protectFreezerAndContents() or the startup delay won't work
+  state.lastTs = now;
+
+  logData.reason = "control";
+
+  if (protection.forcePowerOff) {
+    newPower = 0;
+    logData.reason = "protection";
+    logData.note = protection.reason;
+  } else if (protection.forcePowerOn) {
+    newPower = 1;
+    logData.reason = "protection";
+    logData.note = protection.reason;
+  }
+
+  if (logData.reason == logData.previousReason && logData.note == logData.previousNote) {
+    logData.note == "";
+  } else {
+    logData.previousReason = logData.reason;
+    logData.previousNote = logData.note;
+  }
+
+  setPower(newPower, now);
+}
+
+/**
  * 
  * @returns a request to leave the power as-is, turn it on, or turn it off
  */
-function controlTemperature() {
-  var power = state.power;
-  // currently just supporting one control mode: manage enclosure temperature
+function controlTemperature(now) {
+  var requestedPower = state.power;
 
+  // currently just supporting one control mode: manage enclosure temperature
   if (config.mode == ENCLOSURE) {
     // control enclosure temperature
     var temp = state.enclosureTemp;
     if (state.enclosureTemp > config.targetEnclosureTemp + 1) {
-      power = 1;
+      requestedPower = 1;
     } else if (temp < config.targetEnclosureTemp - 1) {
-      power = 0;
+      requestedPower = 0;
     }
   } else if (config.mode == FERMENTATION) {
     // TODO log not implemented
   }
 
-  return power;
+  return requestedPower;
 }
 
 /**
@@ -82,6 +120,8 @@ function controlTemperature() {
  * 
  * Returns an object that indicates whether power should be forced off or forced on, along with a loggable
  * description of why.
+ * 
+ * TODO compressor off time after startup didnt' work!
  */
 function protectFreezerAndContents(now) {
   var result = {
@@ -98,7 +138,7 @@ function protectFreezerAndContents(now) {
   } else if (now < state.stayOffUntilTs) {
     result.forcePowerOff = true;
     result.reason = "Ensure minimum compressor off time between run cycles";
-  } else if (state.power != 0 && state.stayOnUntilTs > now) {
+  } else if (state.power != 0 && now < state.stayOnUntilTs) {
     result.forcePowerOn = true;
     result.reason = "Ensure minimum compressor run time";
   }
@@ -119,9 +159,29 @@ function protectFreezerAndContents(now) {
   return result;
 }
 
+
+function setPower(newPower, now) {
+  now = now || new Date().valueOf();
+
+  newPower = newPower ? 1 : 0;
+  if (state.power != newPower) {
+    state.power = newPower;
+    physicalInterface.setPower(newPower);
+
+    // TODO in future this should be handled by controller side, as stayOffUntilTs and stayOnUntilTs more
+    // properly belong to its state
+    if (newPower == 0) {
+      state.stayOffUntilTs = now + (config.compressorRestSeconds * 1000);
+    } else {
+      state.stayOnUntilTs = now + (config.minCompressorRunSeconds * 1000);
+    }
+  }
+}
+
+
 // TODO implement data logging to local file (local and web servable from node.js perspective)
 function logToFile(logData) {
-  console.log({state: state, details: logData});
+  console.log({ state: state, details: logData });
 }
 
 
@@ -144,9 +204,12 @@ function exitRequested() {
 function onExit(code) {
   // turn off the power and then unexport that GPIO pin
   physicalInterface.stop();
-  powerSwitch.writeSync(0);
-  powerSwitch.unexport();
-  powerSwitch = null;
+
+  if (logFileFd) {
+    fs.close(logFileFd, function (err) {
+
+    });
+  }
 
   console.log("beer-controller is exiting with code " + code);
 }
