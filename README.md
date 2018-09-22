@@ -30,3 +30,13 @@ TODO installer needs to generate [parts of] beer-pi.service, including
 + path to nodejs
 
 TODO installer needs to do "npm install"
+
+
+The Temperature Control Log
+Haven't yet decided best place to write this.
+
+Some considerations:
++ /tmp may get deleted automatically on reboot and/or at other times. Too risky, without knowing more
++ the service runs under the pi user id
++ the service working directory is /, and we definitely don't want to put a log file there
++ 

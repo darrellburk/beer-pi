@@ -1,6 +1,9 @@
 "use strict;";
 const config = require("./config.js");
-const physicalInterface = require("./physical-interface.js");
+// this is the real physical interface
+//const physicalInterface = require("./physical-interface.js");
+// this physical interface runs the tests
+const physicalInterface = require("./beer-controller.test.js");
 const fs = require('fs');
 
 // some symbolic constants for safety
@@ -49,8 +52,8 @@ fs.open("./keezer.log", "a", function (err, fd) {
   fs.write(fd, "Freezer controller started", callback)
 });
 
-validateConfig(config);
 physicalInterface.configure(config, state, controlFreezerPower);
+validateConfig(config);
 physicalInterface.start();
 
 
@@ -155,6 +158,10 @@ function protectFreezerAndContents(now) {
    * and whether the enclosure probe is sensing temperature changes inside the freezer.
    */
 
+   /**
+    * TODO add tests for detecting when the two probes are swapped (enclosure probe measuring
+    * wort temperature and vice versa).
+    */
 
   return result;
 }
@@ -313,6 +320,14 @@ function validateConfig(config) {
     config.controlIntervalSeconds = 30;
   }
 
+  if (!(typeof config.controlLogFilePath == "string" && openControlLog())) {
+    config.controlLogFilePath = "/tmp/beer-pi.log";
+    console.log("controlLogFilePath missing/invalid or file could not be opened. Please fix. In the meantime, we will " +
+      "attempt to write to " + config.controlLogFilePath);
+    openControlLog();
+  }
+
+
   console.log({
     message: "Finished validating config",
     config: config,
@@ -320,3 +335,15 @@ function validateConfig(config) {
   });
 
 }
+
+function openControlLog() {
+  if (logFileFd != null) {
+    return;
+  }
+  fs.open("./keezer.log", "a", function (err, fd) {
+    if (err) throw err;
+    logFileFd = fd;
+    fs.write(fd, "Freezer controller started", callback)
+  });
+}
+

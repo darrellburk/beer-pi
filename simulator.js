@@ -41,8 +41,9 @@
 var simConfig = {
 	freezer: {
     thermalMass: 1,   // in degrees F per second per delta (in degrees F), 1 is not at all right I'm sure
-    minCoilTempF: 0,  // that's a very unverified assumption
+    minCoilTempF: -30,  // the typical home freezer can get the enclosure down to -20F, so the coils must be colder than that
     maxWatts: 200,    // maximum heat power removal rate (when load temp is loadTempF)
+    leakWatts: 1,     // rate of heat power leakage into/out of the freezer when ambient is +1/-1 degree different from enclosure
     loadTempF: 80,    // temperature of freezer contents at which maximum cooling rate (maxWatts) occurs
   },
   wort: {
@@ -51,4 +52,15 @@ var simConfig = {
     secondaryWatts: 1, // heat power generated during secondary fermentation
   }
   
+};
+
+function FreezerSimulator(startTemp) {
+  this.ambientTemp = 72;  // temperature outside the freezer
+  this.enclosureTemp = startTemp;
+  this.power = 0;
+  this.hasWort = false;
+}
+
+module.exports = {
+  FreezerSimulator: FreezerSimulator
 };
