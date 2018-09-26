@@ -59,6 +59,10 @@ function FreezerSimulator(startTemp) {
   this.enclosureTemp = startTemp;
   this.power = 0;
   this.hasWort = false;
+  this.setPower = function(newPower) {
+    this.power = newPower ? 1 : 0;
+
+  }
 }
 
 module.exports = {

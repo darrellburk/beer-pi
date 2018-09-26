@@ -7,7 +7,7 @@
  * run the controller. 
  */
 
- var simulator = require("./simulator.js");
+var simulator = require("./simulator.js");
 
 var config = null;
 var state = null;
@@ -78,11 +78,11 @@ function testStartupDelay() {
   var endTs = ts + config.compressorRestSeconds * 1000 + config.controlIntervalSeconds * 10 * 1000;
   var powerTs = ts + config.compressorRestSeconds * 1000;
 
-  startTest("After start, freezer power does not come on until after "+compressorRestSeconds+" seconds");
+  startTest("After start, freezer power does not come on until after "+config.compressorRestSeconds+" seconds");
 
   setPowerCallback = function(power) {
     freezer.setPower(power);
-    if (ts < powerTs) {
+    if (power && ts < powerTs) {
       fail("power came on at "+(ts/1000)+" seconds, too early");
     }
   }
@@ -92,9 +92,17 @@ function testStartupDelay() {
   }
 
   while (ts <= endTs) {
-    controlFunction(now);
+    controlFunction(ts);
     ts += config.controlIntervalSeconds * 1000;
   }
+}
+
+function startTest(name) {
+  console.log("Starting test: "+name);
+}
+
+function fail(message) {
+  console.log("FAIL: "+message);
 }
 
 

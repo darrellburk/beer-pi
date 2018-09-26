@@ -10,6 +10,13 @@ const fs = require('fs');
 const ENCLOSURE = "enclosure";
 const FERMENTATION = "fermentation";
 
+// for the keezer control log
+var controlLogFd = null;
+var controlLog = [];
+var writingControlLog = false;
+var closeControlLog = false;
+var closeControlLogCallback = null;
+
 /*
 Call onExit when the app is terminating because process.exit() is called or there is no more work to do.
 
@@ -18,7 +25,7 @@ TODO systemctl restart does not trigger our exit handling, fix that
 process.on("exit", onExit);
 process.on("SIGINT", function () {
   console.log("Received SIGINT");
-  process.exit();
+  exitRequested();
 });
 
 var state = {
@@ -44,12 +51,11 @@ var logData = {
   previousReason: "",
   previousNote: ""
 };
-var logFileFd = null;
 
 fs.open("./keezer.log", "a", function (err, fd) {
   if (err) throw err;
-  logFileFd = fd;
-  fs.write(fd, "Freezer controller started", callback)
+  controlLogFd = fd;
+  addControlLog("Freezer controller started");
 });
 
 physicalInterface.configure(config, state, controlFreezerPower);
@@ -158,10 +164,10 @@ function protectFreezerAndContents(now) {
    * and whether the enclosure probe is sensing temperature changes inside the freezer.
    */
 
-   /**
-    * TODO add tests for detecting when the two probes are swapped (enclosure probe measuring
-    * wort temperature and vice versa).
-    */
+  /**
+   * TODO add tests for detecting when the two probes are swapped (enclosure probe measuring
+   * wort temperature and vice versa).
+   */
 
   return result;
 }
@@ -199,7 +205,11 @@ function logToFile(logData) {
  * app to terminate.
  */
 function exitRequested() {
-  process.exit();
+  addControlLog("Freezer controller stopping\n");
+  closeControlLog = true;
+  closeControlLogCallback = function() {
+    process.exit();
+  }
 }
 
 /**
@@ -211,12 +221,6 @@ function exitRequested() {
 function onExit(code) {
   // turn off the power and then unexport that GPIO pin
   physicalInterface.stop();
-
-  if (logFileFd) {
-    fs.close(logFileFd, function (err) {
-
-    });
-  }
 
   console.log("beer-controller is exiting with code " + code);
 }
@@ -261,7 +265,7 @@ function validateConfig(config) {
    */
   if (typeof config.targetEnclosureTemp != "number") {
     console.log("Fatal error: targetEnclosureTemp not set correctly. Terminating.");
-    process.exit();
+    exitRequested();
   } else if (config.targetEnclosureTemp > 72) {
     console.log("NOTICE: targetEnclosureTemp > 72. It is likely that freezer will never be powered and no cooling will occur.");
   } else if (config.targetEnclosureTemp < 0) {
@@ -279,7 +283,7 @@ function validateConfig(config) {
   console.log({ "discovered probes": probes });
   if (typeof config.enclosureProbeId != "string") {
     console.log("Fatal: enclosureProbeId is missing or malformed. Please set it to one of the probe IDs reported just below. To help distinguish probes, expose them to different temperatures.");
-    process.exit();
+    exitRequested();
   }
   if (typeof config.fermenterProbeId != "string") {
     console.log("fermenterProbeId is missing or malformed. Fermentation control is not available. Setting mode=enclosure.");
@@ -303,7 +307,7 @@ function validateConfig(config) {
   }
   if (state.enclosureProbeId == null) {
     console.log("Fatal: enclosureProbeId is set to %s but no such probe is connected. Terminating.", config.enclosureProbeId);
-    process.exit();
+    exitRequested();
   }
   if (state.fermenterProbeId == null && config.fermenterProbeId != null) {
     console.log("Warning: fermenterProbeId is set to %s but no such probe is connected. Fermentation control is not available. Setting mode=enclosure.", config.fermenterProbeId);
@@ -337,13 +341,45 @@ function validateConfig(config) {
 }
 
 function openControlLog() {
-  if (logFileFd != null) {
+  if (controlLogFd != null) {
     return;
   }
   fs.open("./keezer.log", "a", function (err, fd) {
-    if (err) throw err;
-    logFileFd = fd;
-    fs.write(fd, "Freezer controller started", callback)
+    if (err) {
+      controlLogFd = null;
+      throw err;
+    }
+    controlLogFd = fd;
+    addControlLog("Freezer controller started\n");
   });
+}
+
+function addControlLog(message) {
+  controlLog.push(message);
+  if (!writingControlLog) {
+    writeToControlLogFile();
+  }
+}
+
+
+function writeToControlLogFile() {
+  writingControlLog = true;
+  var message = controlLog.shift();
+  fs.write(controlLogFd, message, function (error, bytesWritten, messageWritten) {
+    writingControlLog = false;
+    if (error) {
+      console.log({ ERROR: "writeToControlLogFile() failed", error: error });
+    }
+    if (controlLog.length > 0) {
+      setTimeout(writeToControlLogFile, 0);
+    } else if (closeControlLog) {
+      fs.close(controlLogFd, function (err) {
+        if (closeControlLogCallback) {
+          closeControlLogCallback();
+        }
+      });
+    }
+  });
+
 }
 
