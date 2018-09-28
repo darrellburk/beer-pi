@@ -7,10 +7,13 @@
  * run the controller. 
  */
 
-var simulator = require("./simulator.js");
+var simulator = require("./simulator");
+const data = require("./data");
+const config = require("./config");
+var state = data.state;
 
-var config = null;
-var state = null;
+// TODO if two different modules both require data.js, do they get the same data objects?
+
 var controlFunction = null;
 var setPowerCallback = null;
 var stopCallback = null;
@@ -18,14 +21,10 @@ var stopCallback = null;
 
 /**
  * 
- * @param {*} pconfig configuration object from config.js
  * @param function fControl function that controls the freezer power (by calling setPower()). This module will call
  * the control function periodically after reading the temperature probes
- * @param function fLogToFile callback to log current state to the control history file
  */
-function configure(pconfig, pstate, fControl) {
-  config = pconfig;
-  state = pstate;
+function init(fControl) {
   controlFunction = fControl;
 }
 
@@ -42,14 +41,18 @@ function start() {
  * 
  */
 function setPower(power) {
-  setPowerCallback(power ? 1 : 0);
+  if (typeof setPowerCallback == "function") {
+    setPowerCallback(power ? 1 : 0);
+  }
 }
 
 /**
  * Turns freezer power off and stops the physical interface.
  */
 function stop() {
-  stopCallback();
+  if (typeof stopCallback == "function") {
+    stopCallback();
+  }
 }
 
 /**
@@ -80,6 +83,7 @@ function testStartupDelay() {
 
   startTest("After start, freezer power does not come on until after "+config.compressorRestSeconds+" seconds");
 
+  // set the test/simulation callbacks
   setPowerCallback = function(power) {
     freezer.setPower(power);
     if (power && ts < powerTs) {
@@ -88,13 +92,22 @@ function testStartupDelay() {
   }
 
   stopCallback = function() {
+    freezer.setPower(0);
     fail("stop() was called");
   }
 
   while (ts <= endTs) {
+    state.enclosureTemp = freezer.enclosureTemp;
+    state.fermentationTemp = freezer.fermentationTemp;
     controlFunction(ts);
+    freezer.simulate(ts);
     ts += config.controlIntervalSeconds * 1000;
   }
+
+  // clear the callbacks (so that normal exit doesn't fail the test)
+  setPowerCallback = null;
+  stopCallback = null;
+
 }
 
 function startTest(name) {
@@ -107,7 +120,7 @@ function fail(message) {
 
 
 module.exports = {
-  configure: configure,
+  init: init,
   discoverProbes: discoverProbes,
   start: start,
   setPower: setPower,

@@ -39,30 +39,87 @@
 */
 
 var simConfig = {
-	freezer: {
-    thermalMass: 1,   // in degrees F per second per delta (in degrees F), 1 is not at all right I'm sure
-    minCoilTempF: -30,  // the typical home freezer can get the enclosure down to -20F, so the coils must be colder than that
-    maxWatts: 200,    // maximum heat power removal rate (when load temp is loadTempF)
-    leakWatts: 1,     // rate of heat power leakage into/out of the freezer when ambient is +1/-1 degree different from enclosure
-    loadTempF: 80,    // temperature of freezer contents at which maximum cooling rate (maxWatts) occurs
+  freezer: {
+    /**
+     * Lowest temperature the coils can be, with the compressor running. Since the typical home freezer can cool
+     * the enclosure to -20F, the coil temperature must be a bit lower than that.
+     */
+    minCoilTempF: -30,
+    /**
+     * The rate of heat removal from the freezer enclosure is proportional to the difference between the enclosure temperature
+     * and the coil temperature.
+     * 
+     * Degrees per second per degree of temperature delta
+     */
+    enclosureToCoilRate: 0.0005,
+    /**
+     * There is an upper limit to how fast the freezer can remove heat from the enclosure. Below this limit, the heat transfer
+     * rate is enclosureToCoilRate. 
+     * 
+     * Degrees per second
+     */
+    enclosureToCoilMaxRate: 0.001,
+    /**
+     * The rate at which heat transfers between the exterior (ambient) and interior of the freezer.
+     * 
+     * Degrees per second per degree of temperature delta
+     */
+    enclosureToAmbientRate: 0.000005
   },
   wort: {
     thermalMass: 1,   // again, 1 is certainly not right
     primaryWatts: 15, // heat power generated during active fermentation
     secondaryWatts: 1, // heat power generated during secondary fermentation
   }
-  
+
 };
+
+
 
 function FreezerSimulator(startTemp) {
   this.ambientTemp = 72;  // temperature outside the freezer
   this.enclosureTemp = startTemp;
   this.power = 0;
   this.hasWort = false;
-  this.setPower = function(newPower) {
-    this.power = newPower ? 1 : 0;
+  this.ts = 0;
+  this.setPower = setPower;
+  this.simulate = simulate;
+
+}
+
+function setPower(newPower) {
+  this.power = newPower ? 1 : 0;
+}
+
+/**
+ * TODO will "this" make it in here and be correct???
+ * 
+ * @param {*} ts current timestamp
+ */
+function simulate(ts) {
+  // length of this time slice in seconds
+  var seconds = (ts - this.ts) / 1000;
+
+  // TODO stop assuming that the coils have no thermal inertia...
+  var coilTemp = this.power ? simConfig.freezer.minCoilTempF : this.enclosureTemp;
+
+  // change of enclosure temperature due to coils
+  var enclosureToCoilRate = (coilTemp - this.enclosureTemp) * simConfig.freezer.enclosureToCoilRate;
+  if (Math.abs(enclosureToCoilRate) > simConfig.freezer.enclosureToCoilMaxRate) {
+    enclosureToCoilRate = Math.sign(enclosureToCoilRate) * simConfig.freezer.enclosureToCoilMaxRate
+  }
+  var enclosureDeltaFromCoils = enclosureToCoilRate * seconds;
+
+  // heat from ambient to enclosure
+  var enclosureDeltaFromAmbient = ((this.ambientTemp - this.enclosureTemp) * simConfig.freezer.enclosureToAmbientRate) * seconds;
+
+  if (this.hasWort) {
 
   }
+
+  this.enclosureTemp += (enclosureDeltaFromCoils + enclosureDeltaFromAmbient);
+
+  this.ts = ts;
 }
 
 module.exports = {
