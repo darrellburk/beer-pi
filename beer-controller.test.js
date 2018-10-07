@@ -3,8 +3,8 @@
  */
 "use strict;";
 const os = require('os');
-const config = require("./config");
-const physicalInterface = require("./physical-interface");
+const config = require("./config.js");
+const physicalInterface = require("./physical-interface-mock");
 const controller = require("./controller");
 const logging = require("./logging");
 const data = require("./data");
@@ -14,20 +14,7 @@ var logData = data.logData;
 
 console.log("os.homedir()="+os.homedir());
 console.log("os.tmpdir()="+os.tmpdir());
-console.log("process.cwd()="+process.cwd());
 console.log("process.env="+JSON.stringify(process.env));
-
-
-/*
-Call onExit when the app is terminating because process.exit() is called or there is no more work to do.
-
-TODO systemctl restart does not trigger our exit handling, fix that
-*/
-process.on("exit", onExit);
-process.on("SIGINT", function () {
-  console.log("Received SIGINT");
-  exitRequested();
-});
 
 
 logging.openControlLog();
@@ -38,7 +25,6 @@ logging.addControlLog("ts, power, enclosureTemp, fermentationTemp, mode, reason,
 controller.init(physicalInterface);
 controller.validateConfig();
 physicalInterface.start(exitRequested);
-
 
 
 /**

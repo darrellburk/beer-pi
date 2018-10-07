@@ -58,13 +58,13 @@ var simConfig = {
      * 
      * Degrees per second
      */
-    enclosureToCoilMaxRate: 0.001,
+    enclosureToCoilMaxRate: 0.5,
     /**
      * The rate at which heat transfers between the exterior (ambient) and interior of the freezer.
      * 
      * Degrees per second per degree of temperature delta
      */
-    enclosureToAmbientRate: 0.000005
+    enclosureToAmbientRate: 0.0001
   },
   wort: {
     thermalMass: 1,   // again, 1 is certainly not right

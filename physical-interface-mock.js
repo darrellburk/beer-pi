@@ -32,8 +32,13 @@ function init(fControl) {
  * Starts the physical interface. Once started, it will periodically read the temperature probes, then call the control
  * and protection functions, and control freezer power based on their outputs.
  */
-function start() {
+function start(exit) {
   testStartupDelay();
+
+  // shut it down after the tests
+  if (typeof exit == "function") {
+    exit();
+  }
 }
 
 /** 
@@ -78,14 +83,22 @@ function testStartupDelay() {
   var freezer = new simulator.FreezerSimulator(72);
   var ts = 0;
   // stop the test after the rest period plus 10 control intervals
-  var endTs = ts + config.compressorRestSeconds * 1000 + config.controlIntervalSeconds * 10 * 1000;
+  var endTs = ts + config.compressorRestSeconds * 1000 + config.controlIntervalSeconds * 100 * 1000;
   var powerTs = ts + config.compressorRestSeconds * 1000;
+  var powerOnCount = 0;
 
   startTest("After start, freezer power does not come on until after "+config.compressorRestSeconds+" seconds");
 
   // set the test/simulation callbacks
   setPowerCallback = function(power) {
+    console.log("here");
     freezer.setPower(power);
+    if (power) {
+      powerOnCount++;
+      if (powerOnCount==1 && ts > powerTs) {
+        fail("power should have come on at "+(powerTs/1000)+" seconds, but didn't");
+      }
+    }
     if (power && ts < powerTs) {
       fail("power came on at "+(ts/1000)+" seconds, too early");
     }

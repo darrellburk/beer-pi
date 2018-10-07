@@ -1,5 +1,7 @@
-const data = require("./data.js");
+const util = require("util");
+
 const config = require("./config");
+const data = require("./data.js");
 const constants = require("./constants");
 const logging = require("./logging");
 
@@ -27,6 +29,8 @@ function controlFreezerPower(now) {
   state.lastTs = now;
 
   logData.reason = "control";
+  logData.note = "";
+  logData.mode = config.mode;
 
   if (protection.forcePowerOff) {
     newPower = 0;
@@ -39,13 +43,16 @@ function controlFreezerPower(now) {
   }
 
   if (logData.reason == logData.previousReason && logData.note == logData.previousNote) {
-    logData.note == "";
+    logData.note = "";
   } else {
     logData.previousReason = logData.reason;
     logData.previousNote = logData.note;
   }
 
   setPower(newPower, now);
+
+  logging.addControlLog(util.format("%d,%d,%d,%d,%s,%s,%s\n",
+    state.lastTs, state.power, state.enclosureTemp, state.fermentationTemp, logData.mode, logData.reason, logData.note));
 }
 
 /**
@@ -126,7 +133,9 @@ function protectFreezerAndContents(now) {
 
 
 function setPower(newPower, now) {
-  now = now || new Date().valueOf();
+  if (typeof now != 'number') {
+    now = new Date().valueOf();
+  }
 
   newPower = newPower ? 1 : 0;
   if (state.power != newPower) {
@@ -238,13 +247,6 @@ function validateConfig() {
     || (config.controlIntervalSeconds < 1 || config.controlIntervalSeconds > 60)) {
     console.log("controlIntervalSeconds must be >=1 and <=60. Defaulting to 30.");
     config.controlIntervalSeconds = 30;
-  }
-
-  if (!(typeof config.controlLogFilePath == "string" && logging.openControlLog())) {
-    config.controlLogFilePath = "/tmp/beer-pi.log";
-    console.log("controlLogFilePath missing/invalid or file could not be opened. Please fix. In the meantime, we will " +
-      "attempt to write to " + config.controlLogFilePath);
-    logging.openControlLog();
   }
 
 

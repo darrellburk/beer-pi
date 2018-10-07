@@ -21,9 +21,10 @@
 const Gpio = require('onoff').Gpio;
 var powerSwitch = new Gpio(17, 'out');
 const sensor = require('ds18b20-raspi');
+const data = require("./data");
+const config = require("./config");
+var state = data.state;
 
-var config = null;
-var state = null;
 var controlFunction = null;
 var controlInterval = null;
 
@@ -33,14 +34,10 @@ powerSwitch.writeSync(0);
 
 /**
  * 
- * @param {*} pconfig configuration object from config.js
  * @param function fControl function that controls the freezer power (by calling setPower()). This module will call
  * the control function periodically after reading the temperature probes
- * @param function fLogToFile callback to log current state to the control history file
  */
-function configure(pconfig, pstate, fControl) {
-  config = pconfig;
-  state = pstate;
+function init(fControl) {
   controlFunction = fControl;
 }
 
@@ -48,7 +45,7 @@ function configure(pconfig, pstate, fControl) {
  * Starts the physical interface. Once started, it will periodically read the temperature probes, then call the control
  * and protection functions, and control freezer power based on their outputs.
  */
-function start() {
+function start(exit) {
   if (controlInterval == null) {
     var now = new Date().valueOf();
     readTemperature();
@@ -100,7 +97,7 @@ function discoverProbes() {
 
 
 module.exports = {
-  configure: configure,
+  init: init,
   discoverProbes: discoverProbes,
   start: start,
   setPower: setPower,
