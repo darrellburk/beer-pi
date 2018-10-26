@@ -51,7 +51,7 @@ function controlFreezerPower(now) {
 
   setPower(newPower, now);
 
-  logging.addControlLog(util.format("%d,%d,%d,%d,%s,%s,%s\n",
+  logging.addControlLog(util.format("%d,%d,%d,%d,%s,%s,%s",
     state.lastTs, state.power, state.enclosureTemp, state.fermentationTemp, logData.mode, logData.reason, logData.note));
 }
 
@@ -72,7 +72,7 @@ function controlTemperature(now) {
       requestedPower = 0;
     }
   } else if (config.mode == FERMENTATION) {
-    // TODO log not implemented
+    // TODO Implement!
   }
 
   return requestedPower;

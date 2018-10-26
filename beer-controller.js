@@ -31,8 +31,8 @@ process.on("SIGINT", function () {
 
 
 logging.openControlLog();
-logging.addControlLog("Freezer controller started\n");
-logging.addControlLog("ts, power, enclosureTemp, fermentationTemp, mode, reason, note\n");
+logging.addControlLog("Freezer controller started");
+logging.addControlLog("ts, power, enclosureTemp, fermentationTemp, mode, reason, note");
 
 
 controller.init(physicalInterface);
@@ -46,7 +46,7 @@ physicalInterface.start(exitRequested);
  * app to terminate.
  */
 function exitRequested() {
-  logging.addControlLog("Freezer controller stopping\n");
+  logging.addControlLog("Freezer controller stopping");
   logging.closeControlLog()
   .then(function() {
     process.exit();
