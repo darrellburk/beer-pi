@@ -18,8 +18,8 @@ console.log("process.env="+JSON.stringify(process.env));
 
 
 logging.openControlLog();
-logging.addControlLog("Freezer controller started");
-logging.addControlLog("ts, power, enclosureTemp, fermentationTemp, mode, reason, note");
+logging.addControlLog("Freezer controller started\n");
+logging.addControlLog("ts, power, enclosureTemp, fermentationTemp, mode, reason, note\n");
 
 
 controller.init(physicalInterface);
@@ -32,7 +32,7 @@ physicalInterface.start(exitRequested);
  * app to terminate.
  */
 function exitRequested() {
-  logging.addControlLog("Freezer controller stopping");
+  logging.addControlLog("Freezer controller stopping\n");
   logging.closeControlLog()
   .then(function() {
     process.exit();

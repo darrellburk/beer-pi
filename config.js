@@ -2,7 +2,9 @@ module.exports = {
     compressorRestSeconds: 300,
     minCompressorRunSeconds: 120,
     mode: 'enclosure',
-    targetEnclosureTemp: 60,
+    targetEnclosureTemp: 61,
+    targetFermentationTemp: 65,
+    minEnclosureTemp: 33,
     enclosureProbeId: "28-041652951fff",
     fermenterProbeId: "28-031647c7f3ff",
     controlIntervalSeconds: 30 

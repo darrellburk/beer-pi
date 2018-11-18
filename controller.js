@@ -32,11 +32,11 @@ function controlFreezerPower(now) {
   logData.note = "";
   logData.mode = config.mode;
 
-  if (protection.forcePowerOff) {
+  if (protection.forcePowerOff && newPower != 0) {
     newPower = 0;
     logData.reason = "protection";
     logData.note = protection.reason;
-  } else if (protection.forcePowerOn) {
+  } else if (protection.forcePowerOn && newPower == 0) {
     newPower = 1;
     logData.reason = "protection";
     logData.note = protection.reason;
@@ -66,13 +66,15 @@ function controlTemperature(now) {
   if (config.mode == constants.ENCLOSURE) {
     // control enclosure temperature
     var temp = state.enclosureTemp;
-    if (state.enclosureTemp > config.targetEnclosureTemp + 1) {
+    if (temp > config.targetEnclosureTemp + 1) {
       requestedPower = 1;
     } else if (temp < config.targetEnclosureTemp - 1) {
       requestedPower = 0;
     }
   } else if (config.mode == FERMENTATION) {
     // TODO Implement!
+    var error = state.fermentationTemp - config.fermentationTemp
+
   }
 
   return requestedPower;
