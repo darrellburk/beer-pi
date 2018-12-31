@@ -57,24 +57,37 @@ function controlFreezerPower(now) {
 
 /**
  * 
+ * 
+ * Implementation note:
+ * 1) Calculate target enclosure temperature in a mode-dependent manner
+ * 2) Use this to calculate whether freezer power should be on or off, in a mode-independent manner
+ * 
  * @returns a request to leave the power as-is, turn it on, or turn it off
  */
 function controlTemperature(now) {
   var requestedPower = state.power;
+  var target = 72;
 
   // currently just supporting one control mode: manage enclosure temperature
   if (config.mode == constants.ENCLOSURE) {
     // control enclosure temperature
-    var temp = state.enclosureTemp;
-    if (temp > config.targetEnclosureTemp + 1) {
-      requestedPower = 1;
-    } else if (temp < config.targetEnclosureTemp - 1) {
-      requestedPower = 0;
-    }
+    target = state.enclosureTemp;
   } else if (config.mode == FERMENTATION) {
+    // control the fermentation temperature
     // TODO Implement!
-    var error = state.fermentationTemp - config.fermentationTemp
+    var error = state.fermentationTemp - config.fermentationTemp;
+    var target = config.fermentationTemp - (10 * error);
+    if (target < config.minEnclosureTemp) {
+      target = config.minEnclosureTemp;
+    }
+  }
 
+    // due to considerable heat capacity in the refrigeration system, the enclosure
+    // will continue to cool for a while after the power is turned off.
+    if (target > config.targetEnclosureTemp + 1) {
+    requestedPower = 1;
+  } else if (target < config.targetEnclosureTemp) {
+    requestedPower = 0;
   }
 
   return requestedPower;

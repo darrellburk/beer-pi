@@ -23,7 +23,7 @@
  * it. The heat transfer coefficient depends on things like the surface area of the container that holds
  * the wort, whether the wort is circulating, what kind of material the container is made of, how thick it
  * is, etc. For example, if the fermentation vessel is well insulated, then the heat transfer coefficient is
- * low, and heat will be transferred at a certain rage between the carboy and the air surrounding it; if the 
+ * low, and heat will be transferred at a certain rate between the carboy and the air surrounding it; if the 
  * fermentation vessel is not insulated and all other conditions are the same, then heat will be transferred
  * at a higher rate. 
  * 
@@ -35,6 +35,15 @@
  * 
  * 
  * This module contains both the code and configuration for the simulator.
+ * 
+ * Thermal mass values are relative. The important elements to simulate include:
+ * + the ambient environment (thermal mass is infinite and therefore irrelevant)
+ * + the refrigeration system 
+ * + the freezer interior structure (the parts that change temperature as the interior temperature changes, so the
+ *   insulation, interior plastic, shelves, freezer contents other than fermenting wort, etc.). Thermal mass matters,
+ *   but also varies depending on what's being chilled in the freezer.
+ * + Carboy(s) of fermenting wort (which will be generating some heat).
+ * 
  * 
 */
 
@@ -64,7 +73,14 @@ var simConfig = {
      * 
      * Degrees per second per degree of temperature delta
      */
-    enclosureToAmbientRate: 0.0001
+    enclosureToAmbientRate: 0.0001,
+    /**
+     * Heat capacity of the refrigeration system. Used to help simulate how the freezer keeps cooling down for a while even
+     * after the power is turned off.
+     * 
+     * TODO implement this
+     */
+    coilThermalMass: 1
   },
   wort: {
     thermalMass: 1,   // again, 1 is certainly not right
@@ -99,6 +115,48 @@ function setPower(newPower) {
 function simulate(ts) {
   // length of this time slice in seconds
   var seconds = (ts - this.ts) / 1000;
+
+  /**
+   * TODO Simulate!
+   * 
+   * 
+   */
+
+  /**
+   * Simulate the refrigeration system
+   * + When power is on, compressor runs and the amount of compressed refrigerant
+   *   increases toward the maximum. The rate of increase depends on the difference
+   *   between current quantity and max quantity. When the power goes off, the remaining
+   *   compressed refrigerant gets depleted.
+   * + As long as compressed refrigerant is present, the evaporator coils will be held
+   *   at their minimum temperature. The minimum temperature is mostly constant, but increases
+   *   slightly in proportion to the delta between the freezer interior temperature and
+   *   the coil temperature (really, in proportion to how much heat is being removed by
+   *   the evaporator)
+   * + The rate at which the compressed refrigerant is used increases in proportion to the
+   *   delta between the coil temperature and the enclosure temperature.
+   * + The heat capacity of the compressed refrigerant is proportional to its quantity.
+   */
+
+  // heat capacity of compressed refrigerant
+  var refrigerantHeatCapacity = this.compressedRefrigerant * simConfig.refrigerantHeatCapacity;
+  var maxRefrigerantHeatTransfer = 0;
+  if (this.enclosureTemp > simConfig.minCoilTempF) {
+    maxRefrigerantHeatTransfer = seconds * (this.enclosureTemp - simConfig.minCoilTempF) * simConfig.refrigerantHeatTransferRate;
+  }
+  
+  var actualRefrigerantHeatTransfer = refrigerantHeatCapacity > maxRefrigerantHeatTransfer ? maxRefrigerantHeatTransfer : refrigerantHeatCapacity;
+
+
+  
+
+  /**
+   * simulate the evaporator coil temperature
+   * 
+   * + Initial condition is that the coil temperature is the same as the interior temperature.
+   * + When freezer power is on, the coil temperature decreases at a rate that is proportional to 
+   *   [current coil temperature] - simConfig.minCoilTempF
+   */
 
   // TODO stop assuming that the coils have no thermal inertia...
   var coilTemp = this.power ? simConfig.freezer.minCoilTempF : this.enclosureTemp;
