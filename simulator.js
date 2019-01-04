@@ -1,34 +1,60 @@
 /*
  * Simulates the thermal characterists of the freezer and of the fermenting wort.
  * 
- * The freezer has thermal mass. That means that [at all times, including when it is not running], the 
- * coldness of its internal parts can cool things that are put into it (by transferring heat from those 
- * things into the interior of the freezer until everything is at the same temperature).
+ * Enclosure (enc)
+ * This is the freezer body and the evaporator coils that do the cooling. For simplicity, we assume that
+ * the entire freezer body (inside) and coils are always exactly the same temperature as each other.
  * 
- * The freezer also has the ability to remove heat (when it is running). The heat removal rate varies 
- * linearly based on the delta between the temperature of the load (the things in the freezer and the 
- * interior of the freezer itself) and the minimum temperature of the freezer coils. The maximum heat 
- * removal rate occurs when this delta is maximum. We'll arbitrarily say that maximum load temperature 
- * is 80F, and specify the heat removal rate constant relative to that. 
+ * Important characteristics of the enclosure:
+ * + It has a non-zero heat capacity that is large enough to be significant in the simulation
+ * + The refrigeration system is part of it, and has these important characteristics
+ *   + A reserve of compressed refrigerant begins to accumulate when the compressor is on. The accumulated
+ *     compressed refrigerant has a "potential heat capacity". It may be some time after the compressor is
+ *     turned off before this compressed refrigerant is exhausted.
+ *   + As long as there is compressed refrigerant available, the coil/enclosure temperature is held to
+ *     the minimum (this is a function of the regulator valve). When it is exhausted, then the coil/enclosure
+ *     temperature rises as heat is transferred into it from the air inside the freezer (internal air)
+ *   + The rate at which compressed refrigerant is used up is proportional to the rate of heat transfer from
+ *     the internal air into the enclosure/coils. Compressed refrigerant is also used up to cool the coils/
+ *     enclosure down to their minimum temperature.
+ *   + The rate at which the compressor adds to the reserve of compressed refrigerant is inversely proportional
+ *     to the ratio of compressed refrigerant to total refrigerant. Of course, this only happens when the
+ *     compressor is running.
+ *   + There is an upper limit to the compressor's rate of production of compressed refrigerant. The actual
+ *     rate will usually be lower than this. The maximum rate occurs when conditions cause the compressed
+ *     refrigerant to be used up as fast as the compressor can compress it.
  * 
- * Our only load (other than the freezer interior itself) will be the carboy of fermenting beer, the wort. 
- * During fermentation, the wort generates heat. When no fermentation is happening, the wort doesn't generate
- * any heat. The wort also has thermal mass, which is to say, a certain amount of energy is required
- * to heat (by adding energy) or cool (by removing energy) the wort by 1 degree F. The thermal mass is that
- * ratio between energy addition/removal, and the resulting temperature change. The thermal mass
- * is proportional to the number of gallons and is probably nearly identical to the thermal mass of water.
  * 
- * The wort also has a heat transfer cooeficient. This is the ratio that specifies the relationship between
- * the heat addition/removal rate relative to the temperature delta between the wort and the air surrouding
- * it. The heat transfer coefficient depends on things like the surface area of the container that holds
- * the wort, whether the wort is circulating, what kind of material the container is made of, how thick it
- * is, etc. For example, if the fermentation vessel is well insulated, then the heat transfer coefficient is
- * low, and heat will be transferred at a certain rate between the carboy and the air surrounding it; if the 
- * fermentation vessel is not insulated and all other conditions are the same, then heat will be transferred
- * at a higher rate. 
+ * 
+ * Internal air
+ * This is the air inside the freezer enclosure. It is important because it is primarily through this air
+ * that heat is transferred from the load (the freezer contents, possibly including fermenters that may
+ * be generating heat) into the enclosure/coils.
+ * 
+ * Important characteristics:
+ * + it has a heat capacity (which we will assume is constant, ignoring the fact that the volume of air and
+ *   therefore its total heat capacity will decrease as more items are placed in the freezer)
+ * + there is a constant heat transfer coefficient that expresses how fast heat is transferred from the air 
+ *   into the enclosure/coils degrees per second per degree of temperature delta between the two
+ * + there is a heat transfer coefficient that expresses how fast heat is transferred from the load (the
+ *   freezer contents) into the internal air. This coefficient is not constant in real life (it varies 
+ *   depending on the characteristics of the things in the freezer), but for our application we are safe
+ *   to assume it's constant.
+ * 
+ * Load
+ * This is the contents of the freezer, the stuff whose temperature we ultimately want to control. Six packs
+ * of beer, kegs of finished beer, fermenters filled with fermenting wort.
+ * 
+ * Important characteristics:
+ * + the heat transfer rate described in the "internal air" section
+ * + fermenting wort will generate heat
+ * + the load has a specific heat capacity (aka thermal mass). This value varies dramatically depending on 
+ *   what the load actually is. For simulation purposes, we can just assume that the load is always a 
+ *   5-gallon carboy of wort.
+ * 
  * 
  * The temperature controller is intended to estimate the thermal mass of the wort and the freezer by monitoring
- * the freezer internal ambient temperature and wort temperature over time, and calculating how rapidly heat 
+ * the freezer internal air temperature and the wort temperature over time, and calculating how rapidly heat 
  * is transferred. And then, using these values, it is also intended to calculate the heat output of the 
  * fermenting wort, and to use that value to determine whether the wort is in primary/active fermentation, 
  * secondary fermentation, or fermentation not happening (i.e. fermentation not started, or fermentation complete).
@@ -129,13 +155,12 @@ function simulate(ts) {
    *   between current quantity and max quantity. When the power goes off, the remaining
    *   compressed refrigerant gets depleted.
    * + As long as compressed refrigerant is present, the evaporator coils will be held
-   *   at their minimum temperature. The minimum temperature is mostly constant, but increases
-   *   slightly in proportion to the delta between the freezer interior temperature and
-   *   the coil temperature (really, in proportion to how much heat is being removed by
-   *   the evaporator)
+   *   at their minimum temperature. We'll assume this temperature is constant (specifically, we'll ignore the slight
+   *   )
    * + The rate at which the compressed refrigerant is used increases in proportion to the
    *   delta between the coil temperature and the enclosure temperature.
    * + The heat capacity of the compressed refrigerant is proportional to its quantity.
+   * 
    */
 
   // heat capacity of compressed refrigerant
