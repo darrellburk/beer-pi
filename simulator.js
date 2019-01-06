@@ -73,40 +73,52 @@
  * 
 */
 
-var simConfig = {
-  freezer: {
+var simData = {
+  /*
+  Tamb = ambient temperature
+Tair = air temperature inside the keezer
+Tload = temperature of the freezer contents
+Tenc = temperature of the freezer body (interior) and evaporator coil
+
+Ramb = heat transfer coefficient from Tamb to Tair
+Rload = from Tload to Tair
+Rair = from Tair to Tenc
+*/
+  // state (values that express the behavior of the freezer and contents)
+  state : {
     /**
-     * Lowest temperature the coils can be, with the compressor running. Since the typical home freezer can cool
-     * the enclosure to -20F, the coil temperature must be a bit lower than that.
+     * tXxx values are temperatures
      */
-    minCoilTempF: -30,
+    tAmb : 72, // ambient temperature outside of the keezer
+    tEnc : simData.state.tAmb, // temperature of the freezer box and evaporator coil (i.e. the hardware that is interior)
+    tAir : simData.state.tAmb, // temperature of the air inside the freezer
+    tLoad : simData.state.tAmb, // temperature of the keezer contents (kegs, fermenters, six-packs, etc.)
+  },
+  // physical properties/constants
+  prop : {
     /**
-     * The rate of heat removal from the freezer enclosure is proportional to the difference between the enclosure temperature
-     * and the coil temperature.
+     * rXxx are heat transfer rates in [heat unit] per second per degree of temperature delta
      * 
-     * Degrees per second per degree of temperature delta
+     * TODO adjust these!
      */
-    enclosureToCoilRate: 0.0005,
+    rEnc : 1, // from tAir to tEnc
+    rAmb : 1, // from tAmb to tAir
+    rLoad : 1, // from tLoad to tAir
     /**
-     * There is an upper limit to how fast the freezer can remove heat from the enclosure. Below this limit, the heat transfer
-     * rate is enclosureToCoilRate. 
-     * 
-     * Degrees per second
+     * hXxx values are heat capacity (i.e. thermal mass) in degrees of temperature change per [heat unit]
+     * NOTE that hAmb is not provided, it is assumed to be infinite
      */
-    enclosureToCoilMaxRate: 0.5,
+    hEnc : 1, // of the freezer box and coil (potential thermal mass of compressed refrigerant is separate)
+    hAir : 1, // of the air inside the keezer
+    hLoad : 1, // of the keezer contents
     /**
-     * The rate at which heat transfers between the exterior (ambient) and interior of the freezer.
-     * 
-     * Degrees per second per degree of temperature delta
+     * Characteristics of the refrigeration system. Focuses on the heat sinking capacity of the compressed
+     * refrigerant, and the rate at which the running compressor increases that capacity, and the way in
+     * which that capacity is reduced (consumed) by heat transferred from tAir to tEnc, and on what the
+     * maximum potential capacity is.
      */
-    enclosureToAmbientRate: 0.0001,
-    /**
-     * Heat capacity of the refrigeration system. Used to help simulate how the freezer keeps cooling down for a while even
-     * after the power is turned off.
-     * 
-     * TODO implement this
-     */
-    coilThermalMass: 1
+
+
   },
   wort: {
     thermalMass: 1,   // again, 1 is certainly not right
@@ -150,16 +162,16 @@ function simulate(ts) {
 
   /**
    * Simulate the refrigeration system
-   * + When power is on, compressor runs and the amount of compressed refrigerant
-   *   increases toward the maximum. The rate of increase depends on the difference
-   *   between current quantity and max quantity. When the power goes off, the remaining
-   *   compressed refrigerant gets depleted.
-   * + As long as compressed refrigerant is present, the evaporator coils will be held
-   *   at their minimum temperature. We'll assume this temperature is constant (specifically, we'll ignore the slight
-   *   )
-   * + The rate at which the compressed refrigerant is used increases in proportion to the
-   *   delta between the coil temperature and the enclosure temperature.
-   * + The heat capacity of the compressed refrigerant is proportional to its quantity.
+   * 1) How much refrigerant gets added to the compressed refrigerant in this cycle
+   * 2) Heat transfer from ambient to internal air
+   * 3) Heat transfer from load to internal air
+   * 4) Heat transfer from internal air to enclosure (remember, enclosure includes refrigeration system)
+   *    2), 3), and 4) are each done independently and assumed not to interact with each other (we'll revisit
+   *    this assumption  if it results in too much error)
+   * 5) use 2), 3) and 4) to calculate the new temperatures for interior air, load, and enclosure
+   * 6) use 4) to calculate how much compressed refrigerant got used up during this cycle, and then use 1) to 
+   *    also calculate how much compressed refrigerant remains at the end of the cycle.
+   *    If there is no compressed refrigerant left, calculate how enclosure temperature increases.
    * 
    */
 
