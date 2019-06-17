@@ -93,6 +93,8 @@ Rair = from Tair to Tenc
     tEnc : simData.state.tAmb, // temperature of the freezer box and evaporator coil (i.e. the hardware that is interior)
     tAir : simData.state.tAmb, // temperature of the air inside the freezer
     tLoad : simData.state.tAmb, // temperature of the keezer contents (kegs, fermenters, six-packs, etc.)
+    cRefTotal : 0, // total amount of refrigerant that is currently compressed
+    power : 0
   },
   // physical properties/constants
   prop : {
@@ -117,7 +119,8 @@ Rair = from Tair to Tenc
      * which that capacity is reduced (consumed) by heat transferred from tAir to tEnc, and on what the
      * maximum potential capacity is.
      */
-
+    refTotal : 1, // total amount of refrigerant in the refrigeration system
+    cRefRate : 1,
 
   },
   wort: {
@@ -135,6 +138,7 @@ function FreezerSimulator(startTemp) {
   this.enclosureTemp = startTemp;
   this.power = 0;
   this.hasWort = false;
+  this.cRefTotal = 0;
   this.ts = 0;
   this.setPower = setPower;
   this.simulate = simulate;
@@ -153,6 +157,8 @@ function setPower(newPower) {
 function simulate(ts) {
   // length of this time slice in seconds
   var seconds = (ts - this.ts) / 1000;
+  var prop = simData.prop;
+  var state = simData.state;
 
   /**
    * TODO Simulate!
@@ -175,43 +181,23 @@ function simulate(ts) {
    * 
    */
 
-  // heat capacity of compressed refrigerant
-  var refrigerantHeatCapacity = this.compressedRefrigerant * simConfig.refrigerantHeatCapacity;
-  var maxRefrigerantHeatTransfer = 0;
-  if (this.enclosureTemp > simConfig.minCoilTempF) {
-    maxRefrigerantHeatTransfer = seconds * (this.enclosureTemp - simConfig.minCoilTempF) * simConfig.refrigerantHeatTransferRate;
-  }
-  
-  var actualRefrigerantHeatTransfer = refrigerantHeatCapacity > maxRefrigerantHeatTransfer ? maxRefrigerantHeatTransfer : refrigerantHeatCapacity;
-
-
-  
-
-  /**
-   * simulate the evaporator coil temperature
-   * 
-   * + Initial condition is that the coil temperature is the same as the interior temperature.
-   * + When freezer power is on, the coil temperature decreases at a rate that is proportional to 
-   *   [current coil temperature] - simConfig.minCoilTempF
-   */
-
-  // TODO stop assuming that the coils have no thermal inertia...
-  var coilTemp = this.power ? simConfig.freezer.minCoilTempF : this.enclosureTemp;
-
-  // change of enclosure temperature due to coils
-  var enclosureToCoilRate = (coilTemp - this.enclosureTemp) * simConfig.freezer.enclosureToCoilRate;
-  if (Math.abs(enclosureToCoilRate) > simConfig.freezer.enclosureToCoilMaxRate) {
-    enclosureToCoilRate = Math.sign(enclosureToCoilRate) * simConfig.freezer.enclosureToCoilMaxRate
-  }
-  var enclosureDeltaFromCoils = enclosureToCoilRate * seconds;
-
-  // heat from ambient to enclosure
-  var enclosureDeltaFromAmbient = ((this.ambientTemp - this.enclosureTemp) * simConfig.freezer.enclosureToAmbientRate) * seconds;
-
-  if (this.hasWort) {
-
+  // additional refrigerant compressed this cycle
+  var crefAdded = 0;
+  if (state.power == 1) {
+    crefAdded = prop.cRefRate * (prop.refTotal - state.cRefTotal) * seconds;
   }
 
+  // TODO simulate for heat generated in the load (fermenting wort)
+
+  // heat transfer from ambient to internal air
+  var hAmb = (state.tAmb - state.tAir) * prop.rAmb * seconds;
+
+  // heat from load to internal air
+  var hLoad = (state.tLoad - state.tAir) * prop.rLoad * seconds;
+
+  // TODO heat from internal air to enclosure/coil
+
+ 
   this.enclosureTemp += (enclosureDeltaFromCoils + enclosureDeltaFromAmbient);
 
   this.ts = ts;
